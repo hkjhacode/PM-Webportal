@@ -84,4 +84,4 @@ export function requireRoles(user: UserDoc | null, allowedRoles: string[]) {
   if (!user) return false;
   const roles = (user.roles || []).map((r) => r.role);
   return allowedRoles.some((ar) => roles.includes(ar));
-}
+}

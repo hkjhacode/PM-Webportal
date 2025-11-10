@@ -58,7 +58,25 @@ export async function POST(req: NextRequest) {
         }),
       }
     );
-    const json = await resp.json();
+
+    const json = await resp.json().catch(() => ({}));
+
+    if (!resp.ok) {
+      // Graceful fallback when Gemini errors out (e.g., 404 model not found)
+      const message =
+        json?.error?.message ||
+        json?.message ||
+        'Gemini did not return a successful response.';
+      const fallback = `Draft answer: ${query}\n\nNote: AI provider error — ${message}`;
+      return NextResponse.json({
+        result: fallback,
+        provider: 'gemini',
+        configured: true,
+        fallback: true,
+        details: json?.error || json,
+      });
+    }
+
     // Extract plain text from Gemini response safely
     const text =
       json?.candidates?.[0]?.content?.parts?.[0]?.text ||
@@ -79,4 +97,4 @@ export async function POST(req: NextRequest) {
     );
   }
 }
-
+

@@ -41,6 +41,9 @@ export async function POST(req: NextRequest) {
         state: user.state,
         branch: user.branch,
       },
+      // Expose tokens for non-browser clients (dev/testing)
+      accessToken,
+      refreshToken,
     });
     res.cookies.set('accessToken', accessToken, { httpOnly: true, secure: true, sameSite: 'lax', maxAge: 24 * 3600 });
     res.cookies.set('refreshToken', refreshToken, { httpOnly: true, secure: true, sameSite: 'lax', maxAge: 7 * 24 * 3600 });
@@ -68,4 +71,3 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
 }
-
