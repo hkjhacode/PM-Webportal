@@ -198,6 +198,35 @@ Static Pages:       2.52 kB (115 kB total)
 4. **Security Hardening:** Remove test files, set secure secrets
 
 ### **For Development:**
+#### Reset Users to NITI Hierarchy (Dev-only)
+- Set `MONGODB_URI` in your environment (e.g., `.env.local`).
+- Start the dev server: `npm run dev`.
+- Call: `POST http://localhost:9002/api/dev/users/reset`
+  - Effect: Deletes all users and seeds these accounts:
+    - `pmo@gov.in` (PMO Viewer)
+    - `ceo.niti@gov.in` (CEO NITI)
+    - `advisor.up@gov.in` (State Advisor – Uttar Pradesh)
+    - `yp.up@gov.in` (State YP – Uttar Pradesh)
+    - `hod.up.education@gov.in` (Division HOD – UP / Education)
+    - `yp.div.up@gov.in` (Division YP – UP / Education)
+- Passwords:
+  - PMO: `PMO@123`
+  - CEO NITI: `Ceo@123`
+  - State Advisor: `Advisor@123`
+  - State YP: `YP@123`
+  - Division HOD: `HOD@123`
+  - Division YP: `DivYP@123`
+
+#### Create and Propagate Requests
+- Auth with `CEO NITI` or `PMO Viewer` and create a request via `POST /api/workflows`:
+  - Body includes `title`, `infoNeed`, `timeline`, and `targets.states` (e.g., `"Uttar Pradesh"`), optionally `targets.branches` (e.g., `"Education"`).
+- Initial assignment:
+  - If a branch is provided → forwards to `Division YP (state/branch)`.
+  - Else → forwards to `State YP (state)`.
+- Approvals (PATCH `/api/workflows`):
+  - Moves up: Division YP → Division HOD → State YP → State Advisor → CEO NITI → Approved.
+  - Rejections move down one step.
+  - Only the current assignee can act; actions append to the request history.
 - **Current Status:** Ready for development and testing
 - **Mock Mode:** Fully functional for UI/UX testing
 - **API Testing:** All endpoints available for integration
@@ -212,8 +241,6 @@ Static Pages:       2.52 kB (115 kB total)
 
 - `MONGODB_URI` — MongoDB connection string.
 - `JWT_SECRET` — secret for signing JWT.
-- `SENDGRID_API_KEY` — optional; enable emails.
-- `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM` — optional; enable SMS.
 - `REDIS_URL` — optional; token blacklist persistence.
 
 ## APIs
@@ -366,10 +393,6 @@ Create a `.env.local` file with:
 MONGODB_URI="your_mongodb_connection_string"
 JWT_SECRET="your_strong_secret"
 GEMINI_API_KEY="your_gemini_api_key"
-SENDGRID_API_KEY="your_sendgrid_api_key"
-TWILIO_SID="your_twilio_sid"
-TWILIO_TOKEN="your_twilio_token"
-TWILIO_PHONE="+1234567890"
 ```
 
 ### 4. Run Locally
@@ -424,8 +447,6 @@ npm run dev
 | ------------------ | ----- | -------------------------------------- |
 | MongoDB Atlas (M0) | Free  | 512 MB + GridFS                        |
 | Vercel Hosting     | Hobby | 100 GB/month (manual deploys)          |
-| SendGrid           | Free  | 100 emails/day                         |
-| Twilio             | Trial | Dev SMS (trial constraints)            |
 | Gemini API         | Free  | Quotas depend on key (cache responses) |
 
 ---

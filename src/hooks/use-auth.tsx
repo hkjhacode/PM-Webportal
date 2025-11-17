@@ -1,7 +1,8 @@
 
 'use client';
 
-import { USERS, User } from '@/lib/data';
+import { USERS } from '@/lib/data';
+import type { User } from '@/types';
 import { useRouter } from 'next/navigation';
 import React, { createContext, useContext, useState, ReactNode } from 'react';
 
@@ -28,11 +29,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       });
       if (res.ok) {
         const data = await res.json();
+        const roles = Array.isArray(data.user.roles)
+          ? data.user.roles.map((r: any) => ({ role: r.role, state: r.state, division: r.branch }))
+          : [];
         const userFromApi: User = {
           id: data.user.id,
           name: data.user.name,
           email: data.user.email,
-          roles: data.user.roles,
+          roles,
           avatarUrl: data.user.avatarUrl ?? 'https://picsum.photos/seed/100/100',
         };
         setUser(userFromApi);

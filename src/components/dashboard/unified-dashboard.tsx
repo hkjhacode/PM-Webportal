@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   Card,
   CardContent,
@@ -19,7 +19,7 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { REQUESTS, USERS } from '@/lib/data';
+// switched from mock data to live API
 import { Request, User, UserRoleAssignment } from '@/types';
 import { format, parseISO } from 'date-fns';
 import Link from 'next/link';
@@ -59,13 +59,76 @@ export default function UnifiedDashboard() {
     }
   }, [user]);
 
-  const findUserName = (userId: string) =>
-    USERS.find(u => u.id === userId)?.name ?? 'N/A';
+  // Using live API, we don't resolve assignedBy names here; keep placeholder.
+  const findAssignedByLabel = () => '—';
+
+  const [items, setItems] = useState<Request[]>([]);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const res = await fetch('/api/workflows', { credentials: 'include' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const docs = await res.json();
+        const mapStatus = (s: string): Request['status'] => {
+          switch (s) {
+            case 'approved':
+              return 'Completed';
+            case 'rejected':
+              return 'Rejected';
+            default:
+              return 'Pending State YP';
+          }
+        };
+        const toUiRequest = (doc: any): Request => {
+          const due = doc.deadline || doc.timeline;
+          const state = doc.targets?.states?.[0] || '';
+          const division = doc.targets?.branches?.[0] || '';
+          const auditTrail = (doc.history || []).map((h: any, i: number) => ({
+            id: `${doc._id}-h-${i}`,
+            timestamp: new Date(h.timestamp).toISOString(),
+            userId: String(h.userId),
+            action:
+              h.action === 'create' || h.action === 'created'
+                ? 'Created Request'
+                : h.action === 'approve'
+                ? 'Approved'
+                : h.action === 'reject'
+                ? 'Rejected'
+                : h.action === 'forwarded'
+                ? 'Forwarded'
+                : h.action,
+            notes: h.notes,
+          }));
+          return {
+            id: String(doc._id),
+            title: doc.title,
+            description: doc.infoNeed,
+            createdBy: String(doc.createdBy),
+            createdAt: new Date(doc.createdAt).toISOString(),
+            dueDate: due ? new Date(due).toISOString() : new Date().toISOString(),
+            status: mapStatus(doc.status),
+            currentAssigneeId: doc.currentAssigneeId ? String(doc.currentAssigneeId) : '',
+            state,
+            division,
+            submittedData: undefined,
+            auditTrail,
+            flowDirection: doc.status === 'rejected' ? 'down' : 'up',
+            assignedBy: String(doc.createdBy),
+          };
+        };
+        setItems(Array.isArray(docs) ? docs.map(toUiRequest) : []);
+      } catch (e) {
+        setItems([]);
+      }
+    };
+    load();
+  }, []);
 
   const myTasks = useMemo(() => {
     if (!user) return [];
     
-    return REQUESTS.filter(r => {
+    return items.filter(r => {
         // Super Admin and CEO NITI can see everything if no filter is applied
         if ((hasRole('Super Admin') || hasRole('CEO NITI')) && stateFilter === 'all' && divisionFilter === 'all') {
              return true;
@@ -97,7 +160,7 @@ export default function UnifiedDashboard() {
         return isAssignee;
     });
 
-  }, [user, stateFilter, roleFilter, divisionFilter, hasRole]);
+  }, [user, items, stateFilter, roleFilter, divisionFilter, hasRole]);
 
   const filteredTasks = useMemo(() => {
     return myTasks.filter(task => {
@@ -153,7 +216,7 @@ export default function UnifiedDashboard() {
                 </Badge>
               </TableCell>
               <TableCell className="hidden sm:table-cell">
-                {findUserName(request.assignedBy)}
+                {findAssignedByLabel()}
               </TableCell>
               <TableCell className="hidden sm:table-cell">
                 <Badge className="text-xs" variant={getStatusVariant(request.status)}>

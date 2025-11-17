@@ -1,11 +1,11 @@
 
 export type UserRole =
+  | 'PMO'
   | 'CEO NITI'
   | 'State Advisor'
   | 'State YP'
-  | 'Division HOD'
+  | 'State Division HOD'
   | 'Division YP'
-  | 'PMO Viewer'
   | 'Super Admin';
 
 export interface UserRoleAssignment {

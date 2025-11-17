@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { connectDB } from '@/lib/db';
 import { authenticateRequest, requireRoles } from '@/lib/auth';
 import { User } from '@/models/user';
-import { Template } from '@/models/template';
-import { WorkflowRequest } from '@/models/request';
-import { FormSubmission } from '@/models/form';
+import { DynamicFormTemplate } from '@/models/dynamic-form-template';
+import { EnhancedWorkflowRequest } from '@/models/enhanced-workflow-request';
+import { PMVisit } from '@/models/pm-visit';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,80 +28,121 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: 'No users found to assign ownership' }, { status: 400 });
   }
 
-  // Ensure default templates
-  const upserts = [
+  // Ensure default dynamic form templates for different states and verticals
+  const templateUpserts = [
     {
-      mode: 'Energy',
-      name: 'Energy Mode Template',
+      name: 'Energy Data Collection Template',
+      state: 'Andaman and Nicobar Islands',
+      vertical: 'Energy',
       version: '1.0',
-      isDefault: true,
+      isActive: true,
       createdBy: admin._id,
-      schemaJson: {
-        sections: [
-          { id: 'mw_stats', type: 'table', columns: ['Source', 'CapacityMW', 'Share%'] },
-          { id: 'notes', type: 'textarea' },
-        ],
-      },
+      sections: [
+        {
+          id: 'energy_basics',
+          title: 'Basic Energy Information',
+          order: 1,
+          fields: [
+            {
+              id: 'total_capacity_mw',
+              type: 'number',
+              label: 'Total Power Generation Capacity (MW)',
+              required: true,
+              order: 1,
+              validation: { min: 0 }
+            },
+            {
+              id: 'renewable_share',
+              type: 'number',
+              label: 'Renewable Energy Share (%)',
+              required: true,
+              order: 2,
+              validation: { min: 0, max: 100 }
+            }
+          ]
+        }
+      ],
+      metadata: {
+        estimatedCompletionTime: 30,
+        requiredDocuments: ['Energy statistics report', 'Renewable energy policy document'],
+        instructions: 'Please provide accurate energy data for the state.'
+      }
     },
     {
-      mode: 'Tourism',
-      name: 'Tourism Mode Template',
+      name: 'Healthcare Infrastructure Template',
+      state: 'Andaman and Nicobar Islands',
+      vertical: 'Healthcare',
       version: '1.0',
-      isDefault: true,
+      isActive: true,
       createdBy: admin._id,
-      schemaJson: {
-        sections: [
-          { id: 'visitor_growth', type: 'chart', series: ['Year', 'Visitors'] },
-          { id: 'festivals', type: 'list' },
-        ],
-      },
-    },
+      sections: [
+        {
+          id: 'healthcare_facilities',
+          title: 'Healthcare Facilities',
+          order: 1,
+          fields: [
+            {
+              id: 'total_hospitals',
+              type: 'number',
+              label: 'Total Number of Hospitals',
+              required: true,
+              order: 1,
+              validation: { min: 0 }
+            },
+            {
+              id: 'primary_health_centers',
+              type: 'number',
+              label: 'Primary Health Centers',
+              required: true,
+              order: 2,
+              validation: { min: 0 }
+            }
+          ]
+        }
+      ],
+      metadata: {
+        estimatedCompletionTime: 25,
+        requiredDocuments: ['Health department report', 'Infrastructure inventory'],
+        instructions: 'Provide current healthcare infrastructure data.'
+      }
+    }
   ];
 
   const templates: any[] = [];
-  for (const t of upserts) {
-    const existing = await Template.findOne({ mode: t.mode, isDefault: true });
+  for (const t of templateUpserts) {
+    const existing = await DynamicFormTemplate.findOne({ state: t.state, vertical: t.vertical, version: t.version });
     if (existing) templates.push(existing);
-    else templates.push(await Template.create(t));
+    else templates.push(await DynamicFormTemplate.create(t));
   }
 
-  const energyTemplate = templates.find((t) => t.mode === 'Energy');
-
-  // Create a demo workflow request
-  const request =
-    (await WorkflowRequest.findOne({ title: 'Andaman Energy Data Collection' })) ||
-    (await WorkflowRequest.create({
-      title: 'Andaman Energy Data Collection',
-      infoNeed: 'Collect MW capacity and non-fossil shares by source',
-      timeline: new Date(Date.now() + 10 * 24 * 3600 * 1000),
-      deadline: new Date(Date.now() + 7 * 24 * 3600 * 1000),
+  // Create a demo PM Visit
+  const pmVisit =
+    (await PMVisit.findOne({ title: 'PM Visit to Andaman and Nicobar Islands' })) ||
+    (await PMVisit.create({
+      title: 'PM Visit to Andaman and Nicobar Islands',
+      purpose: 'Review development progress and infrastructure projects',
+      visitDate: new Date(Date.now() + 30 * 24 * 3600 * 1000), // 30 days from now
+      state: 'Andaman and Nicobar Islands',
+      verticals: ['Energy', 'Healthcare', 'Tourism'],
+      finalDeadline: new Date(Date.now() + 25 * 24 * 3600 * 1000), // 5 days before visit
       createdBy: admin._id,
-      status: 'open',
-      targets: { states: ['Andaman & Nicobar'], branches: ['Energy'], domains: ['Energy'] },
-      history: [{ action: 'create', userId: admin._id, timestamp: new Date() }],
+      status: 'draft',
+      deadlines: [
+        { role: 'Division YP', deadline: new Date(Date.now() + 15 * 24 * 3600 * 1000), status: 'pending' },
+        { role: 'State Division HOD', deadline: new Date(Date.now() + 18 * 24 * 3600 * 1000), status: 'pending' },
+        { role: 'State YP', deadline: new Date(Date.now() + 21 * 24 * 3600 * 1000), status: 'pending' },
+        { role: 'State Advisor', deadline: new Date(Date.now() + 23 * 24 * 3600 * 1000), status: 'pending' },
+        { role: 'CEO NITI', deadline: new Date(Date.now() + 25 * 24 * 3600 * 1000), status: 'pending' },
+        { role: 'PMO', deadline: new Date(Date.now() + 25 * 24 * 3600 * 1000), status: 'pending' }
+      ],
+      auditLog: [{
+        action: 'created',
+        userId: admin._id,
+        role: 'PMO',
+        timestamp: new Date(),
+        notes: 'Demo PM Visit created for Andaman and Nicobar Islands'
+      }]
     }));
 
-  // Create a demo form submission
-  const existingForm = await FormSubmission.findOne({ requestId: request._id });
-  if (!existingForm && energyTemplate) {
-    await FormSubmission.create({
-      requestId: request._id,
-      templateId: energyTemplate._id,
-      templateMode: 'Energy',
-      branch: 'Energy',
-      state: 'Andaman & Nicobar',
-      submittedBy: admin._id,
-      data: {
-        mw_stats: [
-          { Source: 'Solar', CapacityMW: 25, 'Share%': 12 },
-          { Source: 'Wind', CapacityMW: 10, 'Share%': 5 },
-        ],
-        notes: 'Initial submission for Energy stats.'
-      },
-      status: 'submitted',
-    });
-  }
-
-  return NextResponse.json({ ok: true, seeded: true });
+  return NextResponse.json({ ok: true, seeded: true, pmVisitId: pmVisit._id });
 }
-

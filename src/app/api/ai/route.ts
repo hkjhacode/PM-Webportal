@@ -16,7 +16,7 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   const user = await authenticateRequest(req);
-  if (!requireRoles(user, ['Super Admin', 'PMO/CEONITI', 'State Advisor', 'Div YP', 'State Div HOD'])) {
+  if (!requireRoles(user, ['Super Admin', 'PMO', 'CEO NITI', 'State Advisor', 'State YP', 'State Division HOD', 'Division YP'])) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 

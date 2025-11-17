@@ -4,6 +4,7 @@ import { connectDB } from '@/lib/db';
 import { authenticateRequest, requireRoles } from '@/lib/auth';
 import { CreateRequestSchema } from '@/lib/validation';
 import { WorkflowRequest } from '@/models/request';
+import { User } from '@/models/user';
 
 /**
  * /api/workflows
@@ -36,6 +37,33 @@ export async function POST(req: NextRequest) {
     targets,
     history: [{ action: 'created', userId: user!._id, timestamp: new Date(), notes: '' }],
   });
+  // Initial assignment: forward to bottom-of-chain actor based on targets
+  const targetState = targets.states[0];
+  const targetBranch = (targets.branches || [])[0];
+  const initialRole = targetBranch ? 'Division YP' : 'State YP';
+  const initialAssignee = await User.findOne({
+    roles: { $elemMatch: { role: initialRole, ...(targetState ? { state: targetState } : {}), ...(targetBranch ? { branch: targetBranch } : {}) } },
+  });
+  let forwardedTo = '';
+  if (initialAssignee) {
+    doc.currentAssigneeId = initialAssignee._id;
+    forwardedTo = `${initialRole}${targetState ? `, ${targetState}` : ''}${targetBranch ? ` – ${targetBranch}` : ''}`;
+  } else {
+    // Fallback to State Advisor or CEO NITI
+    const fallbackRole = targetState ? 'State Advisor' : 'CEO NITI';
+    const fallbackAssignee = await User.findOne({
+      roles: { $elemMatch: { role: fallbackRole, ...(targetState ? { state: targetState } : {}) } },
+    });
+    if (fallbackAssignee) {
+      doc.currentAssigneeId = fallbackAssignee._id;
+      forwardedTo = `${fallbackRole}${targetState ? `, ${targetState}` : ''}`;
+    }
+  }
+  if (doc.currentAssigneeId) {
+    doc.status = 'in-progress';
+    doc.history.push({ action: 'forwarded', userId: user!._id, timestamp: new Date(), notes: forwardedTo });
+    await doc.save();
+  }
   return NextResponse.json({ id: String(doc._id) });
 }
 
@@ -44,6 +72,12 @@ export async function GET(req: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   await connectDB();
   const url = new URL(req.url);
+  const id = url.searchParams.get('id');
+  if (id) {
+    const one = await WorkflowRequest.findById(id);
+    if (!one) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    return NextResponse.json(one);
+  }
   const status = url.searchParams.get('status') || undefined;
   const state = url.searchParams.get('state') || undefined;
   const q: any = {};
@@ -64,9 +98,63 @@ export async function PATCH(req: NextRequest) {
   await connectDB();
   const doc = await WorkflowRequest.findById(id);
   if (!doc) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  // Only current assignee can act
+  if (doc.currentAssigneeId && String(doc.currentAssigneeId) !== String(user!._id)) {
+    return NextResponse.json({ error: 'Forbidden: not current assignee' }, { status: 403 });
+  }
   doc.history.push({ action, userId: user!._id, timestamp: new Date(), notes });
-  doc.status = action === 'approve' ? 'approved' : 'rejected';
+
+  const APPROVAL_CHAIN = ['Division YP', 'Division HOD', 'State YP', 'State Advisor', 'CEO NITI'] as const;
+  // Determine actor role in chain (first matching role)
+  const userRoles = (user.roles || []).map((r: { role: string }) => r.role);
+  const actorRole = APPROVAL_CHAIN.find((r) => userRoles.includes(r));
+  const targetState = doc.targets.states[0];
+  const targetBranch = (doc.targets.branches || [])[0];
+
+  if (action === 'approve') {
+    // Move up the chain
+    const idx = actorRole ? APPROVAL_CHAIN.indexOf(actorRole) : -1;
+    const nextRole = idx >= 0 ? APPROVAL_CHAIN[idx + 1] : undefined;
+    if (!nextRole) {
+      // CEO NITI approves -> terminal
+      doc.status = 'approved';
+      doc.currentAssigneeId = undefined as any;
+    } else {
+      const nextAssignee = await User.findOne({
+        roles: { $elemMatch: { role: nextRole, ...(targetState ? { state: targetState } : {}), ...(targetBranch ? { branch: targetBranch } : {}) } },
+      });
+      if (nextAssignee) {
+        doc.currentAssigneeId = nextAssignee._id;
+        doc.status = 'in-progress';
+        doc.history.push({ action: 'forwarded', userId: user!._id, timestamp: new Date(), notes: `${nextRole}${targetState ? `, ${targetState}` : ''}${targetBranch ? ` – ${targetBranch}` : ''}` });
+      } else {
+        // If next assignee missing, still mark as approved for simplicity
+        doc.status = 'approved';
+        doc.currentAssigneeId = undefined as any;
+      }
+    }
+  } else {
+    // Reject goes down the chain
+    const idx = actorRole ? APPROVAL_CHAIN.indexOf(actorRole) : -1;
+    const prevRole = idx > 0 ? APPROVAL_CHAIN[idx - 1] : undefined;
+    if (!prevRole) {
+      doc.status = 'rejected';
+      doc.currentAssigneeId = undefined as any;
+    } else {
+      const prevAssignee = await User.findOne({
+        roles: { $elemMatch: { role: prevRole, ...(targetState ? { state: targetState } : {}), ...(targetBranch ? { branch: targetBranch } : {}) } },
+      });
+      if (prevAssignee) {
+        doc.currentAssigneeId = prevAssignee._id;
+        doc.status = 'in-progress';
+        doc.history.push({ action: 'forwarded', userId: user!._id, timestamp: new Date(), notes: `${prevRole}${targetState ? `, ${targetState}` : ''}${targetBranch ? ` – ${targetBranch}` : ''}` });
+      } else {
+        doc.status = 'rejected';
+        doc.currentAssigneeId = undefined as any;
+      }
+    }
+  }
+
   await doc.save();
   return NextResponse.json({ ok: true });
 }
-

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB } from '@/lib/db';
-import { WorkflowRequest } from '@/models/request';
-import { FormSubmission } from '@/models/form';
+import { EnhancedWorkflowRequest } from '@/models/enhanced-workflow-request';
+import { PMVisit } from '@/models/pm-visit';
 
 /**
  * /api/analytics
@@ -10,9 +10,18 @@ import { FormSubmission } from '@/models/form';
 
 export async function GET() {
   await connectDB();
-  const totalRequests = await WorkflowRequest.countDocuments();
-  const totalForms = await FormSubmission.countDocuments();
-  const overdue = await WorkflowRequest.countDocuments({ deadline: { $lt: new Date() }, status: { $ne: 'closed' } });
-  return NextResponse.json({ totalRequests, totalForms, overdue });
+  const totalWorkflowRequests = await EnhancedWorkflowRequest.countDocuments();
+  const totalPMVisits = await PMVisit.countDocuments();
+  const activePMVisits = await PMVisit.countDocuments({ status: 'active' });
+  const overdueWorkflows = await EnhancedWorkflowRequest.countDocuments({ 
+    'timeline': { $lt: new Date() }, 
+    'status': { $nin: ['approved', 'rejected'] } 
+  });
+  return NextResponse.json({ 
+    totalWorkflowRequests, 
+    totalPMVisits, 
+    activePMVisits, 
+    overdueWorkflows 
+  });
 }
 

@@ -1,4 +1,3 @@
-
 'use client';
 import { Request } from "@/types";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
@@ -33,6 +32,8 @@ export function RequestView({ request }: RequestViewProps) {
     const [isBriefingLoading, setIsBriefingLoading] = useState(false);
     const [isInconsistencyLoading, setIsInconsistencyLoading] = useState(false);
     const [isSummaryLoading, setIsSummaryLoading] = useState(false);
+    const [actionNotes, setActionNotes] = useState<string>('');
+    const [isActing, setIsActing] = useState<boolean>(false);
     
     const isAssignee = user?.id === request.currentAssigneeId;
 
@@ -55,11 +56,38 @@ export function RequestView({ request }: RequestViewProps) {
     }, [request.submittedData?.text]);
 
 
-    const handleAction = (action: 'submit' | 'approve' | 'reject') => {
-        toast({
-            title: `Action: ${action.charAt(0).toUpperCase() + action.slice(1)}`,
-            description: `The request has been ${action === 'submit' ? 'submitted' : action} and forwarded.`,
-        });
+    const handleAction = async (action: 'submit' | 'approve' | 'reject') => {
+        const effectiveAction = action === 'submit' ? 'approve' : action;
+        setIsActing(true);
+        try {
+            const res = await fetch('/api/workflows', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ id: request.id, action: effectiveAction, notes: actionNotes || undefined })
+            });
+            if (!res.ok) {
+                let msg = `HTTP ${res.status}`;
+                try {
+                    const j = await res.json();
+                    if (j?.error) msg = typeof j.error === 'string' ? j.error : 'Action failed';
+                } catch {}
+                toast({ variant: 'destructive', title: 'Action failed', description: msg });
+                return;
+            }
+            toast({
+                title: effectiveAction === 'approve' ? 'Approved & Forwarded' : 'Rejected',
+                description: effectiveAction === 'approve' ? 'Moved to the next level in the chain.' : 'Sent back down the chain.',
+            });
+            // Reload the page to reflect new assignee/status
+            setTimeout(() => {
+                if (typeof window !== 'undefined') window.location.reload();
+            }, 300);
+        } catch (e: any) {
+            toast({ variant: 'destructive', title: 'Network error', description: e?.message || 'Unable to perform action.' });
+        } finally {
+            setIsActing(false);
+        }
     };
 
     const handleGenerateBriefing = async () => {
@@ -175,13 +203,13 @@ export function RequestView({ request }: RequestViewProps) {
                         </Accordion>
 
                         <div className="pt-4 space-y-4">
-                            <Textarea placeholder="Type your overall summary report here..." rows={4} />
+                            <Textarea placeholder="Type your overall summary report here..." rows={4} value={actionNotes} onChange={(e) => setActionNotes(e.target.value)} />
                              <div className="grid w-full max-w-sm items-center gap-1.5">
                                 <Label htmlFor="files">Attach Files</Label>
                                 <Input id="files" type="file" multiple />
-                            </div>
+                             </div>
                              <div className="flex gap-2">
-                                <Button onClick={() => handleAction('submit')}>
+                                <Button onClick={() => handleAction('submit')} disabled={isActing || !isAssignee}>
                                     <Send className="mr-2 h-4 w-4" /> Submit for Approval
                                 </Button>
                              </div>
@@ -199,12 +227,12 @@ export function RequestView({ request }: RequestViewProps) {
                     <CardDescription>Review the submitted data and approve or reject.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                     <Textarea placeholder="Add optional notes..." rows={3} />
+                     <Textarea placeholder="Add optional notes..." rows={3} value={actionNotes} onChange={(e) => setActionNotes(e.target.value)} />
                      <div className="flex gap-2">
-                        <Button onClick={() => handleAction('approve')} className="bg-accent hover:bg-accent/90 text-accent-foreground">
+                        <Button onClick={() => handleAction('approve')} className="bg-accent hover:bg-accent/90 text-accent-foreground" disabled={isActing || !isAssignee}>
                             <ThumbsUp className="mr-2 h-4 w-4" /> Approve & Forward
                         </Button>
-                        <Button onClick={() => handleAction('reject')} variant="destructive">
+                        <Button onClick={() => handleAction('reject')} variant="destructive" disabled={isActing || !isAssignee}>
                             <ThumbsDown className="mr-2 h-4 w-4" /> Reject
                         </Button>
                      </div>

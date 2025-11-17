@@ -17,21 +17,97 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { REQUESTS } from '@/lib/data';
-import { Request } from '@/types';
-import { format, parseISO } from 'date-fns';
+import { format } from 'date-fns';
 import Link from 'next/link';
+import { useEffect, useState } from 'react';
+
+type WorkflowRow = {
+  _id: string;
+  title: string;
+  status: string;
+  deadline?: string | Date;
+  timeline?: string | Date;
+  targets?: { states?: string[]; branches?: string[] };
+};
 
 export default function AllRequestsPage() {
-  const getStatusVariant = (status: Request['status']) => {
+  const [items, setItems] = useState<WorkflowRow[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const res = await fetch('/api/workflows', { credentials: 'include' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        setItems(data);
+      } catch {
+        setItems([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+  }, []);
+
+  const getStatusVariant = (status: string) => {
     switch (status) {
-      case 'Completed':
+      case 'approved':
         return 'default';
-      case 'Rejected':
+      case 'rejected':
         return 'destructive';
       default:
         return 'secondary';
     }
+  };
+
+  const renderRows = () => {
+    if (loading) {
+      return (
+        <TableRow>
+          <TableCell colSpan={5} className="h-24 text-center">
+            Loading...
+          </TableCell>
+        </TableRow>
+      );
+    }
+    if (!items.length) {
+      return (
+        <TableRow>
+          <TableCell colSpan={5} className="h-24 text-center">
+            No requests found or unauthorized.
+          </TableCell>
+        </TableRow>
+      );
+    }
+    return items.map((request) => {
+      const state = request.targets?.states?.[0] || '-';
+      const division = request.targets?.branches?.[0] || '-';
+      const due = request.deadline || request.timeline;
+      const dueDateStr = due ? format(new Date(due), 'PPP') : '-';
+      return (
+        <TableRow key={request._id}>
+          <TableCell>
+            <div className="font-medium">{request.title}</div>
+            <div className="hidden text-sm text-muted-foreground md:inline">
+              {division}
+            </div>
+          </TableCell>
+          <TableCell className="hidden sm:table-cell">{state}</TableCell>
+          <TableCell className="hidden sm:table-cell">
+            <Badge className="text-xs" variant={getStatusVariant(request.status)}>
+              {request.status}
+            </Badge>
+          </TableCell>
+          <TableCell className="hidden md:table-cell">{dueDateStr}</TableCell>
+          <TableCell className="text-right">
+            <Button asChild size="sm" variant="outline">
+              <Link href={`/dashboard/requests/${request._id}`}>View Details</Link>
+            </Button>
+          </TableCell>
+        </TableRow>
+      );
+    });
   };
 
   return (
@@ -53,47 +129,7 @@ export default function AllRequestsPage() {
               <TableHead className="text-right"></TableHead>
             </TableRow>
           </TableHeader>
-          <TableBody>
-            {REQUESTS.length > 0 ? (
-              REQUESTS.map((request) => (
-                <TableRow key={request.id}>
-                  <TableCell>
-                    <div className="font-medium">{request.title}</div>
-                    <div className="hidden text-sm text-muted-foreground md:inline">
-                      {request.division}
-                    </div>
-                  </TableCell>
-                  <TableCell className="hidden sm:table-cell">
-                    {request.state}
-                  </TableCell>
-                  <TableCell className="hidden sm:table-cell">
-                    <Badge
-                      className="text-xs"
-                      variant={getStatusVariant(request.status)}
-                    >
-                      {request.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="hidden md:table-cell">
-                    {format(parseISO(request.dueDate), 'PPP')}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Button asChild size="sm" variant="outline">
-                      <Link href={`/dashboard/requests/${request.id}`}>
-                        View Details
-                      </Link>
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))
-            ) : (
-              <TableRow>
-                <TableCell colSpan={5} className="h-24 text-center">
-                  No requests found.
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
+          <TableBody>{renderRows()}</TableBody>
         </Table>
       </CardContent>
     </Card>

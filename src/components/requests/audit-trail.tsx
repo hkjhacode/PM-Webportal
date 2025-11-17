@@ -42,7 +42,7 @@ export function AuditTrail({ auditTrail }: AuditTrailProps) {
                                     <div className="flex-1">
                                         <p className="text-sm font-medium">
                                             {user?.name}
-                                            <span className="text-muted-foreground font-normal"> ({user?.role})</span>
+                                            <span className="text-muted-foreground font-normal"> ({user?.roles?.join(', ')})</span>
                                         </p>
                                         <p className="text-sm text-primary font-semibold">{log.action}</p>
                                         {log.notes && (

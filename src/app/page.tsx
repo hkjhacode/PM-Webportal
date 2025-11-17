@@ -12,7 +12,8 @@ export default function Home() {
 
   useEffect(() => {
     if (user) {
-      router.push('/dashboard');
+      const isSuperAdmin = (user.roles || []).some(r => r.role === 'Super Admin');
+      router.push(isSuperAdmin ? '/dashboard/user-management' : '/dashboard');
     }
   }, [user, router]);
 

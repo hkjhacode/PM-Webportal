@@ -1,0 +1,357 @@
+Implementation Spec — Role-based Credentialing + Top-Down Request Workflow (PMO → Div YP)
+Goals (one line)
+
+Enforce first-role credential creation using a configurable pattern, and implement a strict, auditable top-down request flow (PMO → CEO_NITI → StateAdvisor → StateYP → StateDivHOD → DivYP) with deadline-reduction-only policy, notification propagation, document creation at DivYP level using division-specific templates, and robust multi-role handling.
+
+High-level summary of behavior
+
+When a user receives their first-ever role, the system must auto-generate and assign a username/email following an admin-configurable pattern (example patterns below). This should be mandatory and irreversible by subsequent role assignments unless an admin explicitly overrides via a special flow.
+
+PMO creates a Request (title + textual requirement + target state + deadlines + list of divisions/verticals).
+
+The system automatically assigns it first to CEO_NITI (or CEO role), who reviews and forwards to the StateAdvisor for the specific state.
+
+StateAdvisor may optionally reduce the deadline (or leave it unchanged) — cannot increase it. Upon forward, a notification is sent to the assigned StateYP.
+
+StateYP fans the request out to HODs of each division for the state (or directly to DivYP if HOD absent), creating per-division Assignments with the (same or reduced) deadline.
+
+Each Division (DivYP) creates the document using the division’s template; versioning and comments are supported. When submitted, it flows upstream for review and approval.
+
+If a user holds multiple roles, deduplicate assignments: a person should receive one actionable assignment per request and role-priority rules should decide which role handles it.
+
+The system logs every action to an immutable AuditLog and sends notifications at each step (and on login, the dashboard shows unread notifications and pending assignments).
+
+Entities (for DB design and implementation) — names & purpose (no schema)
+
+List these as collections/tables with a sentence describing each. (Do not implement schema in this prompt — just ensure developer maps them.)
+
+Users — people in the system; can hold multiple roles; first-role detection required.
+
+Roles — role definitions (PMO, CEO_NITI, StateAdvisor, StateYP, StateDivHOD, DivYP, etc.); include scope (global/state/division) and priority.
+
+States — state / UT entities (e.g., Andaman & Nicobar, Lakshadweep, DNHDD).
+
+Divisions — verticals (Health, Education, Water, Energy, Tourism, IT, Rural Dev, Environment, etc.). Use the compiled list.
+
+Requests — the top-level instruction created by PMO (title, description, target state, divisions list, initial deadline, effective deadline, status).
+
+Assignments — mapping of a Request to a specific user in a role context (deadline, status, division, state).
+
+Templates — division-specific document templates (structured JSON/placeholder-based) to help DivYPs create documents.
+
+Documents — documents created by DivYPs; versioned; linked to an Assignment and Request.
+
+Notifications — in-app notifications (unread/read) for users.
+
+AuditLogs — immutable trail of actions (who, when, what changed, before/after).
+
+Config — system config (credential pattern, domain, role priority order, allowed actors who can reduce deadlines).
+
+Credential generation: exact rules & constraints (must be enforced)
+
+When: On assignment of the first-ever role to a user (i.e., user has zero roles prior).
+
+What to create: username and email (and optionally a temporary password/invite link).
+
+Pattern: Admin-configurable string with tokens. Example tokens:
+
+{first} → sanitized lowercase first name (no spaces)
+
+{last} → sanitized lowercase last name (or x if missing)
+
+{role} → role key (e.g., stateyp, divyp)
+
+{state} → state code (e.g., AN), optional
+
+{uid} → last 6 hex chars of user id (collision fallback)
+
+Example patterns (admin selects one):
+
+{first}.{last}.{role}@visitwise.gov.in
+
+{first}{last}.{state}@visitwise.gov.in
+
+{first}.{last}.{uid}@visitwise.gov.in (fallback safe pattern)
+
+Rules & validations:
+
+Pattern must produce a valid email address.
+
+If generated email already exists, append . {uid} before the @ to make unique.
+
+Username should be derived similarly (sanitized, <= 40 chars).
+
+The credential generation must be atomic: if role assignment fails, credentials are not created.
+
+After generation, the email must not be changed by further role assignments automatically.
+
+Admin override allowed only through a separate "credential admin change" UI with an audit record and reason required.
+
+If user already has an email before first-role assignment (e.g., pre-created account), do not override it automatically — instead mark that the auto-generation was skipped and log an audit entry.
+
+Deliverable for developer: UI/endpoint that assigns roles and enforces the above rules, plus admin-config settings to control the pattern + domain. Add clear log entries in the AuditLog after generation.
+
+Request lifecycle & business rules (detailed)
+
+Actors & canonical flow:
+PMO → CEO_NITI → StateAdvisor (of target state) → StateYP → StateDivHOD → DivYP
+
+Step-by-step:
+
+PMO creates Request
+
+Inputs: title, description (text), target state, list of divisions, initial deadline (date + time), priority, optional PM visit date.
+
+System action: create Request with status = open, initialDeadline = initialDeadline, effectiveDeadline = initialDeadline. Create initial assign to CEO_NITI.
+
+Notify: CEO_NITI users.
+
+CEO_NITI reviews
+
+Action: Approve & forward, or request clarification. When forward, it is directed to the StateAdvisor of the state.
+
+System: assign StateAdvisor role user(s) for that state.
+
+Notify: StateAdvisor.
+
+StateAdvisor
+
+Can reduce the effective deadline (only earlier date allowed) OR leave unchanged.
+
+After review, forward to StateYP (assignment).
+
+System: update Request.effectiveDeadline if decreased; write history + audit log and notify all downstream assignees of new deadline.
+
+UI: show a visible diff (old deadline → new deadline). If reduced, highlight the change.
+
+StateYP
+
+On receiving request, StateYP fans out to all relevant divisions:
+
+For each Division in Request.divisions: attempt to assign to the StateDivHOD for that state and division. If HOD not present, assign to StateYP or fallback role as configured.
+
+Assignments inherit the Request.effectiveDeadline.
+
+System: create Assignment documents for each target user (HOD or fallback).
+
+Notify: all created assignees (HODs or DivYPs).
+
+StateDivHOD
+
+Receives assignment; can run checks and forward to DivYP for the division (for that state).
+
+Minimum allowed change: can reduce deadline further (again only earlier). If they reduce, the shorter deadline propagates to downstream assignments.
+
+System: when HOD forwards, create Assignment(s) for DivYP users for that division & state.
+
+DivYP
+
+Responsible for document creation.
+
+Must use a division template if available; allowed to modify fields but system should record version and changes.
+
+After initial submission, the document flows back to HOD → StateYP → StateAdvisor → CEO_NITI for review & approval (each can request changes which reopen the document to DivYP).
+
+On final approval, Request status becomes reviewed or closed as configured.
+
+Deadline rules:
+
+Effective deadline may only move earlier (never later).
+
+Only permitted roles can reduce deadlines — at minimum StateAdvisor and StateDivHOD; extend roles allowed list via Config.
+
+When a deadline is reduced:
+
+Update Request.effectiveDeadline.
+
+All pending downstream assignments’ deadline fields must be set to the new earlier date automatically (cannot be increased at assignment level later).
+
+Notify all affected assignees with a message and visual prominence on dashboard.
+
+Reject any attempt to increase the deadline at API level — return a clear validation error.
+
+Assignment uniqueness & multi-role handling:
+
+Avoid duplicate assignments for the same Request + user. If a user holds multiple roles that would each receive an assignment, apply Role Priority (configurable). Example priority (highest → lowest):
+
+StateAdvisor
+
+StateYP
+
+StateDivHOD
+
+DivYP
+
+HOD (others)
+
+If a single user is both HOD and DivYP for the same division & state, assign only once and record in Assignment which role is considered for the task.
+
+The UI must show the user all roles they have, but the assignment should be single actionable item.
+
+Notifications:
+
+Create notification each time Request/Assignment is created/updated (especially when deadline reduced).
+
+On user login, show unread notifications, and a prioritized list of assignments (sorted by deadline asc and priority).
+
+Optionally support email notifications (configurable per system env).
+
+Document creation & templates (DivYP level)
+
+Template requirements:
+
+Templates should be division-specific and versioned.
+
+Each template includes a structured JSON model:
+
+Title, Executive summary, Key metrics (pre-populated fields from state/vertical data), Observations, Recommendations, Annexures (file uploads), References.
+
+Template must contain placeholders for data that can be auto-filled (e.g., metrics like Forest cover (sq.km), STP capacity (MLD)) pulled from the compiled doc corpus.
+
+DivYP must be able to:
+
+Create a Draft using a selected Template.
+
+Save versions; annotate changes; submit for review.
+
+Attach files and link to external references.
+
+When document is submitted, the Assignment status becomes completed and Document status submitted. The upstream reviewers get notifications and can either approve or request changes with comments.
+
+Deliverable: Template management UI (create/edit/publish) for admin and template-use UI for DivYP.
+
+Audit & History (must be immutable)
+
+Every mutation on Request, Assignment, Document, User credential generation must write an AuditLog entry. The log should contain:
+
+entityType, entityId, actorUserId, action, timestamp, before, after, note/reason.
+
+Credential generation entry must contain the pattern used and the generated email/username.
+
+UI/UX expectations (developer notes)
+
+Dashboard for each user: unread notifications, pending assignments, deadline countdowns.
+
+When a deadline is reduced, show a modal/alert once per session on login.
+
+Assignment view shows: request summary, history trail (who did what), template link, deadline, comments.
+
+Document editor: form-based template with autosave + versioning + submit button.
+
+Role management screen: assign roles to users; mark first role assignment clearly; show whether credentials were auto-generated or pre-existing; admin override UI must require reason and store in AuditLog.
+
+Config & Admin controls
+
+Credential pattern string (tokens: {first},{last},{role},{state},{uid}).
+
+Email domain (e.g., visitwise.gov.in or custom).
+
+Role priority order (array).
+
+Allowed roles to reduce deadlines (array).
+
+Notification preferences (system-wide email push toggle).
+
+Fallback assignment policy (if HOD absent: assign to StateYP or fallback group).
+
+Test cases (must pass in QA)
+
+First-role generation
+
+Create user with zero roles; assign role DivYP for State AN → verify email & username created per pattern and saved; AuditLog entry exists; password invite created.
+
+Subsequent role assignment
+
+Assign second role to same user → verify email unchanged; AuditLog shows role assignment.
+
+Duplicate prevention
+
+A user holding both HOD and DivYP should receive only one Assignment; role priority decides which label shows.
+
+Request propagation
+
+PMO creates Request with initial deadline D. CEO forwards to StateAdvisor (deadline unchanged). StateAdvisor reduces to D1 < D. Verify Request.effectiveDeadline = D1 and all pending Assignment.deadline = D1; notifications created for all downstream users.
+
+Deadline cannot be increased
+
+Any attempt to set deadline > Request.effectiveDeadline must be rejected and audited.
+
+Document flow
+
+DivYP creates doc using template and submits → HOD, StateYP, StateAdvisor, CEO can sequentially review, approve, or request changes. Version history preserved.
+
+Fallback assignment
+
+No StateDivHOD exists for a division; StateYP should receive & handle assignment; fallback behavior logged.
+
+Notification & login
+
+On login after an assignment created, the assigned user must see the notification and the pending assignment on the dashboard.
+
+Admin override
+
+Admin changes a generated email (rare case). Ensure AuditLog records old/new email and reason.
+
+Acceptance criteria (for sign-off)
+
+All paths in Test Cases pass.
+
+Credential generation behavior conforms to pattern and uniqueness rules and is irreversible by role reassignments (unless admin override invoked).
+
+Request fan-out and deadline reduction rules enforced server-side (cannot be bypassed via UI).
+
+Assignments deduplicated for multi-role users with configurable role-priority applied.
+
+Document templating & versioning works; reviewers can request changes and version history shows diffs.
+
+AuditLog contains entries for all critical actions (credential generation, deadline changes, assignment creations).
+
+Notifications are created consistently and show on user dashboards.
+
+Deliverables expected from developer
+
+Updated system design doc reflecting these rules and entities.
+
+API contract (endpoints names + input/output) for:
+
+Role assignment (first-role detection + credential generation)
+
+Request creation
+
+Forward / reduce-deadline action
+
+Fan-out to divisions
+
+Assignment management (accept/reject/complete)
+
+Document creation / submit / review
+
+Notification fetch / mark-read
+
+Admin-config endpoints (credential pattern, role priority)
+
+UI specs (mockups or screen list) for:
+
+Role assignment page
+
+Request creation modal
+
+Assignment detail page
+
+Document editor (template-based)
+
+Admin config page
+
+Test plan and automated tests for the Test Cases above.
+
+Migration plan for existing users (if users already exist): detect those with emails; mark them as pre-existing and skip auto-generation.
+
+Edge cases & clarifications to implement by developer (do not block on these; pick sane defaults)
+
+If the user’s first or last name contains characters invalid for email, sanitize (strip accent marks, spaces) and fallback to {first}{uid} token.
+
+If multiple CEO_NITI users exist, assign to the primary/active CEO (configurable) or create an approval queue.
+
+If a request targets multiple states, fan-out must run per-state separately (create a master Request and per-state child Requests or use assignments with state field).
+
+If a downstream assignee rejects or declines assignment, add automatic escalations to the StateYP after configurable wait time.

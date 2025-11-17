@@ -17,12 +17,18 @@ const RoleAssignmentSchema = new Schema(
 const UserSchema = new Schema(
   {
     name: { type: String, required: true },
-    email: { type: String, required: true, unique: true },
-    passwordHash: { type: String, required: true },
+    email: { type: String, unique: true, sparse: true },
+    passwordHash: { type: String },
     avatarUrl: { type: String },
     roles: { type: [RoleAssignmentSchema], default: [] },
     state: { type: String },
     branch: { type: String },
+    credentialSourceRole: {
+      role: { type: String },
+      state: { type: String },
+      branch: { type: String },
+    },
+    credentialLockedAt: { type: Date },
   },
   { timestamps: true }
 );

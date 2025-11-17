@@ -42,8 +42,8 @@ export const USERS: User[] = [
     id: 'user-4',
     name: 'Saanvi Gupta',
     roles: [
-        { role: 'Division HOD', state: 'Uttar Pradesh', division: 'Education' },
-        { role: 'Division HOD', state: 'Maharashtra', division: 'Health' }
+        { role: 'State Division HOD', state: 'Uttar Pradesh', division: 'Education' },
+        { role: 'State Division HOD', state: 'Maharashtra', division: 'Health' }
     ],
     email: 'hod.up.education@gov.in',
     password: 'HOD@123',
@@ -60,7 +60,7 @@ export const USERS: User[] = [
   {
     id: 'user-6',
     name: 'Anika Singh',
-    roles: [{ role: 'PMO Viewer' }],
+    roles: [{ role: 'PMO' }],
     email: 'pmo@gov.in',
     password: 'PMO@123',
     avatarUrl: 'https://picsum.photos/seed/6/100/100',
@@ -68,24 +68,53 @@ export const USERS: User[] = [
 ];
 
 export const USER_ROLES: UserRole[] = [
+  'PMO',
   'CEO NITI',
   'State Advisor',
   'State YP',
-  'Division HOD',
+  'State Division HOD',
   'Division YP',
-  'PMO Viewer',
   'Super Admin'
 ];
 
 export const STATES = [
-    'Uttar Pradesh',
-    'Maharashtra',
-    'Punjab',
-    'Gujarat',
-    'Karnataka',
-    'Rajasthan',
-    'Andhra Pradesh',
-    'Tamil Nadu',
+  'Andhra Pradesh',
+  'Arunachal Pradesh',
+  'Assam',
+  'Bihar',
+  'Chhattisgarh',
+  'Goa',
+  'Gujarat',
+  'Haryana',
+  'Himachal Pradesh',
+  'Jharkhand',
+  'Karnataka',
+  'Kerala',
+  'Madhya Pradesh',
+  'Maharashtra',
+  'Manipur',
+  'Meghalaya',
+  'Mizoram',
+  'Nagaland',
+  'Odisha',
+  'Punjab',
+  'Rajasthan',
+  'Sikkim',
+  'Tamil Nadu',
+  'Telangana',
+  'Tripura',
+  'Uttar Pradesh',
+  'Uttarakhand',
+  'West Bengal',
+  'Andaman and Nicobar Islands',
+  'Chandigarh',
+  'Dadra and Nagar Haveli',
+  'Daman and Diu',
+  'Delhi',
+  'Jammu and Kashmir',
+  'Ladakh',
+  'Lakshadweep',
+  'Puducherry'
 ];
 
 export const DIVISIONS = [

@@ -20,17 +20,54 @@ import { CalendarIcon } from "lucide-react"
 import { Calendar } from "../ui/calendar"
 import { cn } from "@/lib/utils"
 import { format } from "date-fns"
+import { useRouter } from 'next/navigation'
 import { useToast } from "@/hooks/use-toast"
 
 export default function NewRequestDialog() {
-    const [date, setDate] = React.useState<Date>()
+    const router = useRouter();
+    const [date, setDate] = React.useState<Date | undefined>()
+    const [title, setTitle] = React.useState<string>('')
+    const [description, setDescription] = React.useState<string>('')
+    const [state, setState] = React.useState<string>('')
+    const [division, setDivision] = React.useState<string>('')
     const { toast } = useToast()
 
-    const handleCreateRequest = () => {
-        toast({
-            title: "Request Created",
-            description: "The new information request has been initiated and assigned.",
-        })
+    const handleCreateRequest = async () => {
+        if (!date) {
+            toast({ variant: 'destructive', title: 'Missing Due Date', description: 'Please pick a due date.' });
+            return;
+        }
+        // API requires timeline at least 3 days in the future
+        const now = new Date();
+        const min = new Date(now.getTime() + 3 * 24 * 3600 * 1000);
+        if (date <= min) {
+            toast({ variant: 'destructive', title: 'Due Date Too Soon', description: 'Pick a date at least 3 days ahead.' });
+            return;
+        }
+        try {
+            const res = await fetch('/api/workflows', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({
+                    title,
+                    infoNeed: description,
+                    timeline: date,
+                    targets: { states: state ? [state] : [], branches: division ? [division] : [] },
+                })
+            });
+            if (!res.ok) {
+                let msg = `HTTP ${res.status}`;
+                try { const j = await res.json(); if (j?.error) msg = typeof j.error === 'string' ? j.error : 'Failed to create'; } catch {}
+                toast({ variant: 'destructive', title: 'Create Failed', description: msg });
+                return;
+            }
+            const data = await res.json();
+            toast({ title: 'Request Created', description: 'Assigned to the first actor in the chain.' });
+            router.push(`/dashboard/requests/${data.id}`);
+        } catch (e: any) {
+            toast({ variant: 'destructive', title: 'Network Error', description: e?.message || 'Unable to create request.' });
+        }
     }
 
     return (
@@ -53,25 +90,25 @@ export default function NewRequestDialog() {
               <Label htmlFor="title" className="text-right">
                 Title
               </Label>
-              <Input id="title" placeholder="Quarterly Report Analysis" className="col-span-3" />
+              <Input id="title" placeholder="Quarterly Report Analysis" className="col-span-3" value={title} onChange={(e) => setTitle(e.target.value)} />
             </div>
             <div className="grid grid-cols-4 items-start gap-4">
               <Label htmlFor="description" className="text-right pt-2">
                 Description
               </Label>
-              <Textarea id="description" placeholder="Details about the request..." className="col-span-3" />
+              <Textarea id="description" placeholder="Details about the request..." className="col-span-3" value={description} onChange={(e) => setDescription(e.target.value)} />
             </div>
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="state" className="text-right">
                 State
               </Label>
-              <Input id="state" placeholder="e.g., Maharashtra" className="col-span-3" />
+              <Input id="state" placeholder="e.g., Uttar Pradesh" className="col-span-3" value={state} onChange={(e) => setState(e.target.value)} />
             </div>
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="division" className="text-right">
                 Division
               </Label>
-              <Input id="division" placeholder="e.g., Education" className="col-span-3" />
+              <Input id="division" placeholder="e.g., Education" className="col-span-3" value={division} onChange={(e) => setDivision(e.target.value)} />
             </div>
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="due-date" className="text-right">

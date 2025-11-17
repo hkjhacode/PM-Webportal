@@ -203,9 +203,6 @@ JWT_SECRET=your-secure-jwt-secret-minimum-32-chars
 REFRESH_SECRET=your-secure-refresh-secret-minimum-32-chars
 
 # Optional Services
-SENDGRID_API_KEY=your-sendgrid-key     # For email notifications
-TWILIO_ACCOUNT_SID=your-twilio-sid     # For SMS notifications
-TWILIO_AUTH_TOKEN=your-twilio-token    # For SMS notifications
 GOOGLE_AI_API_KEY=your-google-ai-key   # For AI features
 ```
 
